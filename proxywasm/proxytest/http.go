@@ -17,6 +17,7 @@ package proxytest
 import (
 	"log"
 	"strings"
+	"sync"
 
 	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/internal"
 	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/types"
@@ -414,7 +415,7 @@ func (h *httpHostEmulator) CallOnRequestBody(contextID uint32, body []byte, endO
 		log.Fatalf("invalid context id: %d", contextID)
 	}
 
-	cs.requestBody = append(cs.requestBodyBuffer, body...)
+	cs.requestBody = appendByCopy(cs.requestBodyBuffer, body)
 	cs.action = internal.ProxyOnRequestBody(contextID,
 		len(body), endOfStream)
 	if cs.action == types.ActionPause {
@@ -541,4 +542,19 @@ func (h *httpHostEmulator) SetProperty(path []string, data []byte) error {
 	return internal.StatusToError(internal.ProxySetProperty(
 		&raw[0], len(raw), &data[0], len(data),
 	))
+}
+
+var MAX_SIZE = 1000
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, MAX_SIZE)
+	},
+}
+
+func appendByCopy(b1 []byte, b2 []byte) []byte {
+	b3 := bufPool.Get().([]byte)[:len(b1)+len(b2)]
+	copy(b3, b1)
+	copy(b3[len(b1):], b2)
+	bufPool.Put(b3[:MAX_SIZE])
+	return b3
 }
